@@ -51,7 +51,7 @@ try {
     extraHTTPHeaders: { "Accept-Language": "en-US,en;q=0.9" },
     locale: "en-US",
     timezoneId: "America/New_York",
-    userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
     viewport: { width: 1365, height: 900 }
   });
   const page = await context.newPage();

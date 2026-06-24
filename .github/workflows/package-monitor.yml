@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   monitor:
-    runs-on: ubuntu-latest
+    runs-on: macos-15-intel
     timeout-minutes: 10
     env:
       GITHUB_EVENT_NAME: ${{ github.event_name }}
@@ -31,7 +31,7 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Install browser
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       - name: Test monitor logic
         run: npm test
