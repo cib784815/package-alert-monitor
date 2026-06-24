@@ -43,14 +43,24 @@ const now = new Date();
 let browser;
 
 try {
-  browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
-  const trackingUrl = `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(trackingNumber)}`;
+  browser = await chromium.launch({
+    headless: true,
+    args: ["--disable-blink-features=AutomationControlled"]
+  });
+  const context = await browser.newContext({
+    extraHTTPHeaders: { "Accept-Language": "en-US,en;q=0.9" },
+    locale: "en-US",
+    timezoneId: "America/New_York",
+    userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+    viewport: { width: 1365, height: 900 }
+  });
+  const page = await context.newPage();
+  const trackingUrl = `https://tools.usps.com/tracking/?tLabels=${encodeURIComponent(trackingNumber)}`;
 
   await page.goto(trackingUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
   await page.getByText("Tracking Number:", { exact: true }).waitFor({
     state: "visible",
-    timeout: 30_000
+    timeout: 45_000
   });
 
   const paragraphs = await page.locator("p:visible").allTextContents();
