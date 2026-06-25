@@ -5,7 +5,7 @@ const cloudflareUrl = process.env.CLOUDFLARE_WORKER_URL?.replace(/\/+$/, "");
 const cloudflareKey = process.env.CLOUDFLARE_MANUAL_RUN_KEY?.trim();
 const ntfyTopic = process.env.NTFY_TOPIC?.trim();
 const ntfyToken = process.env.NTFY_TOKEN?.trim();
-const isManualRun = process.env.GITHUB_EVENT_NAME === "workflow_dispatch";
+const forceNotify = process.env.FORCE_NOTIFY === "1";
 
 if (!cloudflareUrl) throw new Error("CLOUDFLARE_WORKER_URL is missing.");
 if (!cloudflareKey) throw new Error("CLOUDFLARE_MANUAL_RUN_KEY is missing.");
@@ -50,7 +50,7 @@ const sent = formatSentTime(now);
 try {
   const tracking = await checkCloudflare();
 
-  if (isQuietHours(now) && !tracking.delivered && !isManualRun) {
+  if (isQuietHours(now) && !tracking.delivered && !forceNotify) {
     console.log("Quiet hours are active; no routine notification was sent.");
   } else {
     await notify(notificationTitle(tracking), notificationBody(tracking, sent));
@@ -59,7 +59,7 @@ try {
 
   if (tracking.delivered) setOutput("delivered", "true");
 } catch (error) {
-  if (!isQuietHours(now) || isManualRun) {
+  if (!isQuietHours(now) || forceNotify) {
     await notify("USPS Tracking Unavailable", `Official USPS tracking is unavailable. Sent: ${sent}.`);
   }
   throw error;
