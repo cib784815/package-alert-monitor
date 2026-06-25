@@ -1,44 +1,26 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isQuietHours, parseTrackingPage } from "./monitor-core.mjs";
+import { formatSentTime, isQuietHours, notificationBody, notificationTitle } from "./monitor-core.mjs";
 
-test("parses an in-transit package with an ETA", () => {
-  const result = parseTrackingPage([
-    "Tracking Number:",
-    "Your item is being processed at our USPS facility in RANDALLSTOWN, MD 21133.",
-    "On the Way",
-    "Processing at USPS Facility",
-    "RANDALLSTOWN, MD 21133",
-    "June 23, 2026 6:12 AM"
-  ], [
-    "USPS Tracking",
-    "Expected Delivery by:",
-    "Friday 26 June 2026 Expected Delivery Date by 9:00pm Expected Delivery Time"
-  ]);
-
-  assert.equal(result.delivered, false);
-  assert.equal(result.status, "Processing at USPS Facility");
-  assert.equal(result.location, "RANDALLSTOWN, MD 21133");
-  assert.equal(result.eta, "Friday 26 June 2026 by 9:00pm");
+test("applies Eastern quiet hours", () => {
+  assert.equal(isQuietHours(new Date("2026-06-25T03:00:00Z")), true);
+  assert.equal(isQuietHours(new Date("2026-06-25T10:00:00Z")), false);
 });
 
-test("recognizes delivery and a missing ETA", () => {
-  const result = parseTrackingPage([
-    "Tracking Number:",
-    "Your item was delivered in or at the mailbox at 2:34 pm.",
-    "Delivered",
-    "Delivered, In/At Mailbox",
-    "BALTIMORE, MD 21201",
-    "June 26, 2026 2:34 PM"
-  ], ["USPS Tracking"]);
+test("formats the package update notification body", () => {
+  const tracking = {
+    delivered: false,
+    eta: "Friday, June 26, 2026 by 9:00 PM",
+    location: "RANDALLSTOWN, MD 21133",
+    status: "Processing at USPS Facility"
+  };
+  const sent = formatSentTime(new Date("2026-06-25T15:10:00Z"));
 
-  assert.equal(result.delivered, true);
-  assert.equal(result.status, "Delivered, In/At Mailbox");
-  assert.equal(result.location, "BALTIMORE, MD 21201");
-  assert.equal(result.eta, "USPS does not show one yet");
+  assert.equal(notificationTitle(tracking), "USPS Package Update");
+  assert.match(notificationBody(tracking, sent), /Location: RANDALLSTOWN, MD 21133\./);
+  assert.match(notificationBody(tracking, sent), /ETA: Friday, June 26, 2026 by 9:00 PM\./);
 });
 
-test("uses America/New_York quiet hours", () => {
-  assert.equal(isQuietHours(new Date("2026-06-24T03:30:00Z")), true);
-  assert.equal(isQuietHours(new Date("2026-06-24T10:00:00Z")), false);
+test("uses delivered title for final notification", () => {
+  assert.equal(notificationTitle({ delivered: true }), "USPS Package Delivered");
 });

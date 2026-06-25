@@ -7,8 +7,5 @@
     "test": "node --test monitor-core.test.mjs",
     "monitor": "node monitor.mjs"
   },
-  "dependencies": {
-    "playwright": "1.61.0"
-  }
+  "dependencies": {}
 }
-

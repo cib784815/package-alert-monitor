@@ -14,9 +14,11 @@ jobs:
     runs-on: macos-15-intel
     timeout-minutes: 10
     env:
+      CLOUDFLARE_MANUAL_RUN_KEY: ${{ secrets.CLOUDFLARE_MANUAL_RUN_KEY }}
+      CLOUDFLARE_WORKER_URL: ${{ secrets.CLOUDFLARE_WORKER_URL }}
       GITHUB_EVENT_NAME: ${{ github.event_name }}
       NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-      TRACKING_NUMBER: ${{ secrets.TRACKING_NUMBER }}
+      NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
 
     steps:
       - name: Check out monitor
@@ -26,12 +28,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22
-
-      - name: Install monitor
-        run: npm install --no-audit --no-fund
-
-      - name: Install browser
-        run: npx playwright install chromium
 
       - name: Test monitor logic
         run: npm test

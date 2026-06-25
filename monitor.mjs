@@ -1,99 +1,66 @@
 import fs from "node:fs";
-import { chromium } from "playwright";
-import { formatSentTime, isQuietHours, parseTrackingPage } from "./monitor-core.mjs";
+import { formatSentTime, isQuietHours, notificationBody, notificationTitle } from "./monitor-core.mjs";
 
-const trackingNumber = process.env.TRACKING_NUMBER?.trim();
+const cloudflareUrl = process.env.CLOUDFLARE_WORKER_URL?.replace(/\/+$/, "");
+const cloudflareKey = process.env.CLOUDFLARE_MANUAL_RUN_KEY?.trim();
 const ntfyTopic = process.env.NTFY_TOPIC?.trim();
+const ntfyToken = process.env.NTFY_TOKEN?.trim();
 const isManualRun = process.env.GITHUB_EVENT_NAME === "workflow_dispatch";
 
-if (!/^\d{20,22}$/.test(trackingNumber ?? "")) {
-  throw new Error("TRACKING_NUMBER is missing or invalid.");
-}
-if (!/^[-_A-Za-z0-9]{1,64}$/.test(ntfyTopic ?? "")) {
-  throw new Error("NTFY_TOPIC is missing or invalid.");
-}
+if (!cloudflareUrl) throw new Error("CLOUDFLARE_WORKER_URL is missing.");
+if (!cloudflareKey) throw new Error("CLOUDFLARE_MANUAL_RUN_KEY is missing.");
+if (!/^[-_A-Za-z0-9]{1,128}$/.test(ntfyTopic ?? "")) throw new Error("NTFY_TOPIC is missing or invalid.");
+if (!ntfyToken) throw new Error("NTFY_TOKEN is missing.");
 
 function setOutput(name, value) {
-  if (process.env.GITHUB_OUTPUT) {
-    fs.appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
-  }
+  if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
 }
 
 async function notify(title, body) {
-  if (process.env.DRY_RUN === "1") {
-    console.log(`Dry run: ${title} - ${body}`);
-    return;
-  }
   const response = await fetch(`https://ntfy.sh/${encodeURIComponent(ntfyTopic)}`, {
     method: "POST",
     headers: {
+      Authorization: `Bearer ${ntfyToken}`,
       "Content-Type": "text/plain; charset=utf-8",
       Priority: "high",
       Title: title
     },
     body
   });
-  if (!response.ok) {
-    throw new Error(`ntfy returned HTTP ${response.status}.`);
+  if (!response.ok) throw new Error(`ntfy returned HTTP ${response.status}.`);
+}
+
+async function checkCloudflare() {
+  const response = await fetch(`${cloudflareUrl}/check`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${cloudflareKey}` }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.error || !payload.tracking) {
+    throw new Error(payload.error || `Cloudflare check returned HTTP ${response.status}.`);
   }
+  return payload.tracking;
 }
 
 setOutput("delivered", "false");
+
 const now = new Date();
-let browser;
+const sent = formatSentTime(now);
 
 try {
-  browser = await chromium.launch({
-    headless: true,
-    args: ["--disable-blink-features=AutomationControlled"]
-  });
-  const context = await browser.newContext({
-    extraHTTPHeaders: { "Accept-Language": "en-US,en;q=0.9" },
-    locale: "en-US",
-    timezoneId: "America/New_York",
-    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
-    viewport: { width: 1365, height: 900 }
-  });
-  const page = await context.newPage();
-  const trackingUrl = `https://tools.usps.com/tracking/?tLabels=${encodeURIComponent(trackingNumber)}`;
-
-  await page.goto(trackingUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
-  await page.getByText("Tracking Number:", { exact: true }).waitFor({
-    state: "visible",
-    timeout: 45_000
-  });
-
-  const paragraphs = await page.locator("p:visible").allTextContents();
-  const headings = await page.locator("h1:visible,h2:visible,h3:visible").allTextContents();
-  const tracking = parseTrackingPage(paragraphs, headings);
+  const tracking = await checkCloudflare();
 
   if (isQuietHours(now) && !tracking.delivered && !isManualRun) {
     console.log("Quiet hours are active; no routine notification was sent.");
-    process.exitCode = 0;
   } else {
-    const title = tracking.delivered ? "USPS Package Delivered" : "USPS Package Update";
-    const body = [
-      `Location: ${tracking.location}.`,
-      `Status: ${tracking.status}.`,
-      `Sent: ${formatSentTime(now)}.`,
-      `ETA: ${tracking.eta}.`
-    ].join(" ");
-
-    await notify(title, body);
+    await notify(notificationTitle(tracking), notificationBody(tracking, sent));
     console.log("USPS notification sent.");
   }
 
-  if (tracking.delivered) {
-    setOutput("delivered", "true");
-  }
+  if (tracking.delivered) setOutput("delivered", "true");
 } catch (error) {
   if (!isQuietHours(now) || isManualRun) {
-    await notify(
-      "USPS Tracking Unavailable",
-      `Official USPS tracking is unavailable. Sent: ${formatSentTime(now)}.`
-    );
+    await notify("USPS Tracking Unavailable", `Official USPS tracking is unavailable. Sent: ${sent}.`);
   }
   throw error;
-} finally {
-  await browser?.close();
 }
