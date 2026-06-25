@@ -31,15 +31,21 @@ async function notify(title, body) {
 }
 
 async function checkCloudflare() {
-  const response = await fetch(`${cloudflareUrl}/check`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${cloudflareKey}` }
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload.error || !payload.tracking) {
-    throw new Error(payload.error || `Cloudflare check returned HTTP ${response.status}.`);
+  let lastError = "Cloudflare check did not return tracking details.";
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const response = await fetch(`${cloudflareUrl}/check`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${cloudflareKey}` }
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok && !payload.error && payload.tracking) return payload.tracking;
+
+    lastError = payload.error || `Cloudflare check returned HTTP ${response.status}.`;
+    if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 10_000));
   }
-  return payload.tracking;
+
+  throw new Error(lastError);
 }
 
 setOutput("delivered", "false");
@@ -62,5 +68,5 @@ try {
   if (!isQuietHours(now) || forceNotify) {
     await notify("USPS Tracking Unavailable", `Official USPS tracking is unavailable. Sent: ${sent}.`);
   }
-  throw error;
+  console.log(`USPS tracking unavailable: ${error.message}`);
 }
